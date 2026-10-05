@@ -9,7 +9,7 @@
 
 #import <CloudKit/CloudKit.h>
 
-static NSString* const kNotesCloudContainer = @"iCloud.blog.micro.shared";
+static NSString* const kNotesCloudContainer = @"iCloud.com.rajuyadav25.releasepipeline.strata";
 static NSString* const kNotesSettingsType = @"Setting";
 
 @implementation MBNotesCloudModule

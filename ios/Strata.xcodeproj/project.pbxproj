@@ -518,7 +518,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = blog.micro.strata;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rajuyadav25.releasepipeline.strata;
 				PRODUCT_NAME = Strata;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -553,7 +553,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = blog.micro.strata;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rajuyadav25.releasepipeline.strata;
 				PRODUCT_NAME = Strata;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
