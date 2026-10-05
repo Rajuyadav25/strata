@@ -71,6 +71,14 @@ jobs:
             echo "iphonesimulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
           } 2>&1 | tee "$EVIDENCE/xcode.txt"
 
+      # Run 37254057473: the runner's Xcode 26.1.1 had no iOS 26.1 platform, so the
+      # generic simulator destination was ineligible (exit 70) and the control never compiled.
+      - name: Install iOS platform for control Xcode
+        if: matrix.id == 'control-xcode-26.1'
+        run: |
+          xcodebuild -downloadPlatform iOS 2>&1 | tail -20 | tee "$EVIDENCE/download-platform.txt"
+          xcrun simctl list runtimes | tee -a "$EVIDENCE/download-platform.txt"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.2
