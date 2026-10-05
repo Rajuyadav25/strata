@@ -1,0 +1,43 @@
+# Release Pipeline V1 — DIAGNOSTIC workflow (not the V1 pipeline; no signing,
+# no secrets). Purpose: unsigned iOS Release on GitHub-hosted Xcode 26.6 with
+# the packaged lock portability guard enforced at the runner checkout path.
+name: v1-diag-ios-unsigned
+on:
+  push:
+    branches: ["v1-diag/ios-unsigned-ci"]
+permissions:
+  contents: read
+jobs:
+  ios-unsigned:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.6
+        run: |
+          echo "EVIDENCE=$RUNNER_TEMP/evidence" >> "$GITHUB_ENV"; mkdir -p "$RUNNER_TEMP/evidence"
+          sudo xcode-select -s /Applications/Xcode_26.6.0.app/Contents/Developer
+          { echo "ImageOS=$ImageOS ImageVersion=$ImageVersion"; echo "head=$(git rev-parse HEAD) tree=$(git rev-parse 'HEAD^{tree}')"; xcodebuild -version; xcrun swift --version; } 2>&1 | tee "$RUNNER_TEMP/evidence/toolchain.txt"
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.23.2' }
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: '1.4.2' }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: '3.4.5', bundler: '2.6.9', bundler-cache: false }
+      - name: Install dependencies
+        env: { BUNDLE_FROZEN: "true" }
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bundle install
+          bundle exec pod install --project-directory=ios 2>&1 | tee "$EVIDENCE/pod-install.txt"
+      - name: Lock portability guard
+        run: .github/v1/lock-portability-guard.sh .github/v1/ios-podfile-lock.conf "$EVIDENCE/lock-guard"
+      - name: Unsigned iOS Release build (Gate 1A command)
+        run: |
+          set +e
+          xcodebuild -workspace ios/Strata.xcworkspace -scheme Strata -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$RUNNER_TEMP/derived" build > "$EVIDENCE/xcodebuild.txt" 2>&1
+          status=$?; echo "exit=$status" | tee "$EVIDENCE/xcodebuild-status.txt"; tail -5 "$EVIDENCE/xcodebuild.txt"; exit $status
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: v1-diag-ios-unsigned-strata, path: "${{ runner.temp }}/evidence", retention-days: 30 }
