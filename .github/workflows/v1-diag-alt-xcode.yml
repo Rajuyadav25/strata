@@ -90,9 +90,24 @@ jobs:
           bun install --frozen-lockfile 2>&1 | tee "$EVIDENCE/bun-install.txt"
           bundle install 2>&1 | tee "$EVIDENCE/bundle-install.txt"
           bundle exec pod --version | tee -a "$EVIDENCE/toolchain.txt"
-          bundle exec pod install --deployment --project-directory=ios 2>&1 \
-            | tee "$EVIDENCE/pod-install-deployment.txt"
-          git status --porcelain=v1 | tee "$EVIDENCE/post-install-status.txt"
+          # Guarded install. RN 0.83's generated hermes-engine podspec embeds the
+          # absolute checkout path (hermes-compiler hermesc), so its lock checksum
+          # is path-dependent (run 37253804914). Every other lock line must match.
+          bundle exec pod install --project-directory=ios 2>&1 \
+            | tee "$EVIDENCE/pod-install.txt"
+          git diff --no-color -- ios/Podfile.lock | tee "$EVIDENCE/podfile-lock.diff"
+          grep -E '^[-+][^-+]' "$EVIDENCE/podfile-lock.diff" \
+            | grep -v -E '^[-+]  hermes-engine: [0-9a-f]{40}$' \
+            > "$EVIDENCE/podfile-lock-unexpected-changes.txt" || true
+          test ! -s "$EVIDENCE/podfile-lock-unexpected-changes.txt"
+          # Path-substitution proof: mapped back to the local checkout path, the
+          # generated hermes JSON must hash to the committed checksum.
+          committed=$(git show HEAD:ios/Podfile.lock | sed -n 's/^  hermes-engine: \([0-9a-f]\{40\}\)$/\1/p')
+          mapped=$(sed "s#$GITHUB_WORKSPACE#/Users/rajuyadavnakka/release-pipeline-fixtures/strata-proof#g" \
+            "ios/Pods/Local Podspecs/hermes-engine.podspec.json" | shasum | cut -d' ' -f1)
+          echo "committed=$committed mapped=$mapped" | tee "$EVIDENCE/hermes-path-proof.txt"
+          test "$committed" = "$mapped"
+          git status --porcelain=v1 -- . ':!ios/Podfile.lock' | tee "$EVIDENCE/post-install-status.txt"
           test ! -s "$EVIDENCE/post-install-status.txt"
 
       - name: Unsigned iOS Release build (Gate ①A command)
