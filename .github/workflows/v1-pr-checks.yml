@@ -1,0 +1,53 @@
+# Release Pipeline V1
+# PR Verification Workflow Template
+#
+# Instantiate repository-specific values and optional blocks from
+# build-requirements.md before installing this workflow.
+#
+# Do not guess package managers, commands, checks, or cache behavior.
+# Remove checks that inspection establishes are not applicable.
+
+name: PR Checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      # Type/static analysis: SKIPPED. The repository defines no typecheck command and has no tsconfig.json (build-requirements.md §4).
+
+      # Formatting: SKIPPED. Prettier is configured, but the repository defines no format command and its ESLint config (@react-native) disables formatting rules (build-requirements.md §5).
+
+      - name: Test
+        run: bun run test
