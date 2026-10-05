@@ -1,0 +1,123 @@
+# Release Pipeline V1 — TEMPORARY Gate ①A iOS diagnostic (not a V1 template).
+# Purpose: compile the unchanged Strata iOS Release source, unsigned, under
+# GitHub-hosted Xcode toolchains other than local Xcode 26.1.1 / Swift 6.2.1.
+# No signing, credentials, secrets, or distribution.
+name: v1-diag-alt-xcode
+
+on:
+  push:
+    branches: ["v1-diag/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-unsigned-release:
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: control-xcode-26.1
+            runner: macos-26
+            select: "prefix:26.1"
+          - id: newest-xcode
+            runner: macos-26
+            select: "newest"
+          - id: xcode-16
+            runner: macos-15
+            select: "prefix:16"
+    env:
+      BUNDLE_FROZEN: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bind source
+        run: |
+          echo "EVIDENCE=$RUNNER_TEMP/v1-diag-evidence" >> "$GITHUB_ENV"
+          EVIDENCE="$RUNNER_TEMP/v1-diag-evidence"; mkdir -p "$EVIDENCE"
+          {
+            echo "job=${{ matrix.id }} runner_label=${{ matrix.runner }} select=${{ matrix.select }}"
+            echo "run_id=$GITHUB_RUN_ID attempt=$GITHUB_RUN_ATTEMPT sha=$GITHUB_SHA"
+            echo "head=$(git rev-parse HEAD) tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+            sw_vers; uname -m; df -h /
+            echo "installed Xcodes:"; ls -d /Applications/Xcode*.app
+          } | tee "$EVIDENCE/environment.txt"
+          shasum -a 256 Gemfile Gemfile.lock ios/Podfile ios/Podfile.lock \
+            ios/Strata.xcodeproj/project.pbxproj package.json bun.lockb \
+            | tee "$EVIDENCE/input-hashes.sha256"
+
+      - name: Select Xcode
+        run: |
+          versions=$(ls -d /Applications/Xcode_*.app | sed -E 's#.*/Xcode_(.*)\.app#\1#' \
+            | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -t. -k1,1n -k2,2n -k3,3n)
+          case "${{ matrix.select }}" in
+            newest) v=$(echo "$versions" | tail -1) ;;
+            prefix:*) p="${{ matrix.select }}"; p="${p#prefix:}"
+                      v=$(echo "$versions" | grep -E "^${p//./\\.}(\.|$)" | tail -1) ;;
+          esac
+          if [ -z "$v" ]; then
+            echo "XCODE_NOT_AVAILABLE for ${{ matrix.select }}" | tee "$EVIDENCE/xcode.txt"
+            exit 1
+          fi
+          sudo xcode-select -s "/Applications/Xcode_$v.app/Contents/Developer"
+          {
+            echo "selected=/Applications/Xcode_$v.app"
+            xcode-select -p; xcodebuild -version; xcrun swift --version
+            echo "iphonesimulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          } 2>&1 | tee "$EVIDENCE/xcode.txt"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.4.5
+          bundler: 2.6.9
+          bundler-cache: false
+
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          { node -v; bun --version; ruby -v; bundle -v; } | tee "$EVIDENCE/toolchain.txt"
+          bun install --frozen-lockfile 2>&1 | tee "$EVIDENCE/bun-install.txt"
+          bundle install 2>&1 | tee "$EVIDENCE/bundle-install.txt"
+          bundle exec pod --version | tee -a "$EVIDENCE/toolchain.txt"
+          bundle exec pod install --deployment --project-directory=ios 2>&1 \
+            | tee "$EVIDENCE/pod-install-deployment.txt"
+          git status --porcelain=v1 | tee "$EVIDENCE/post-install-status.txt"
+          test ! -s "$EVIDENCE/post-install-status.txt"
+
+      - name: Unsigned iOS Release build (Gate ①A command)
+        run: |
+          cmd=(xcodebuild -workspace ios/Strata.xcworkspace -scheme Strata
+            -configuration Release -sdk iphonesimulator
+            -destination 'generic/platform=iOS Simulator'
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+            -derivedDataPath "$RUNNER_TEMP/derived" build)
+          printf '%q ' "${cmd[@]}" > "$EVIDENCE/xcodebuild-invocation.txt"
+          set +e
+          "${cmd[@]}" > "$EVIDENCE/ios-unsigned-release.txt" 2>&1
+          status=$?
+          set -e
+          echo "exit=$status" | tee "$EVIDENCE/ios-unsigned-release-status.txt"
+          grep -n -E "Global is external, but doesn't have external or weak linkage|\*\* BUILD (SUCCEEDED|FAILED) \*\*|error:" \
+            "$EVIDENCE/ios-unsigned-release.txt" | head -50 | tee "$EVIDENCE/signature-scan.txt"
+          tail -60 "$EVIDENCE/ios-unsigned-release.txt"
+          df -h / | tee -a "$EVIDENCE/environment.txt"
+          exit $status
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-diag-${{ matrix.id }}
+          path: ${{ runner.temp }}/v1-diag-evidence
+          retention-days: 30
