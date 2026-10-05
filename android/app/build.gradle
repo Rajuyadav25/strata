@@ -84,7 +84,7 @@ android {
 
     namespace "blog.micro.strata"
     defaultConfig {
-        applicationId "blog.micro.strata"
+        applicationId "com.rajuyadav25.releasepipeline.strata"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 16
