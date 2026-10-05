@@ -21,15 +21,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Run 37256258925: 26.6 passed with runner-chosen -num-threads 3;
+          # the local 26.1.1 crash used -num-threads 8. Separate the variables.
           - id: control-xcode-26.1
             runner: macos-26
             select: "prefix:26.1"
-          - id: newest-xcode
+            swift_flags: ""
+          - id: newest-xcode-threads8
             runner: macos-26
             select: "newest"
-          - id: xcode-16
-            runner: macos-15
-            select: "prefix:16"
+            swift_flags: "-num-threads 8"
     env:
       BUNDLE_FROZEN: "true"
     steps:
@@ -76,7 +77,9 @@ jobs:
       - name: Install iOS platform for control Xcode
         if: matrix.id == 'control-xcode-26.1'
         run: |
-          xcodebuild -downloadPlatform iOS 2>&1 | tail -20 | tee "$EVIDENCE/download-platform.txt"
+          sudo xcodebuild -runFirstLaunch 2>&1 | tail -5 | tee "$EVIDENCE/download-platform.txt"
+          { xcodebuild -downloadPlatform iOS -buildVersion 26.1 || xcodebuild -downloadPlatform iOS; } 2>&1 \
+            | tail -20 | tee -a "$EVIDENCE/download-platform.txt" || true
           xcrun simctl list runtimes | tee -a "$EVIDENCE/download-platform.txt"
 
       - uses: actions/setup-node@v4
@@ -125,6 +128,9 @@ jobs:
             -destination 'generic/platform=iOS Simulator'
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
             -derivedDataPath "$RUNNER_TEMP/derived" build)
+          if [ -n "${{ matrix.swift_flags }}" ]; then
+            cmd+=('OTHER_SWIFT_FLAGS=$(inherited) ${{ matrix.swift_flags }}')
+          fi
           printf '%q ' "${cmd[@]}" > "$EVIDENCE/xcodebuild-invocation.txt"
           set +e
           "${cmd[@]}" > "$EVIDENCE/ios-unsigned-release.txt" 2>&1
@@ -133,6 +139,9 @@ jobs:
           echo "exit=$status" | tee "$EVIDENCE/ios-unsigned-release-status.txt"
           grep -n -E "Global is external, but doesn't have external or weak linkage|\*\* BUILD (SUCCEEDED|FAILED) \*\*|error:" \
             "$EVIDENCE/ios-unsigned-release.txt" | head -50 | tee "$EVIDENCE/signature-scan.txt"
+          grep -m4 -E 'swift-frontend .*VisionCamera' "$EVIDENCE/ios-unsigned-release.txt" \
+            | grep -o -E -- '-num-threads [0-9]+|-whole-module-optimization| -O ' \
+            | sort | uniq -c | tee "$EVIDENCE/visioncamera-codegen-flags.txt" || true
           tail -60 "$EVIDENCE/ios-unsigned-release.txt"
           df -h / | tee -a "$EVIDENCE/environment.txt"
           exit $status
