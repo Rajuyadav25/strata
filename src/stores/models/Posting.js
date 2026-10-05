@@ -31,7 +31,6 @@ const Posting = types.model('Posting', {
       end: types.optional(types.number, 0),
     }), {start: 0, end: 0}
   ),
-  show_title: types.optional(types.boolean, false),
   toolbar_select_destination_open: types.optional(types.boolean, false)
 }))
 .actions(self => ({

@@ -43,9 +43,10 @@ const App = types.model('App', {
       })
     }),
     
-    set_navigation: flow(function* (navigation = null) {
+    set_navigation: flow(function*(navigation = null) {
       if (navigation) {
-        self.navigation_ref = navigation
+        console.log("App:set_navigation")
+        NAVIGATION = navigation
       }
     }),
     
@@ -178,13 +179,6 @@ const App = types.model('App', {
       console.log("App:close_sheet", sheet_name)
       if (sheet_name != null) {
         SheetManager.hide(sheet_name)
-      }
-    }),
-
-    set_navigation: flow(function*(navigation = null) {
-      if (navigation) {
-        console.log("App:set_navigation")
-        NAVIGATION = navigation
       }
     }),
 
@@ -373,9 +367,6 @@ const App = types.model('App', {
     },
     theme_default_font_size(size = 15) {
       return size
-    },
-    theme_navbar_background_color() {
-      return self.theme === "dark" ? "#212936" : "#fff"
     },
     theme_button_background_color() {
       return self.theme === "dark" ? "#374151" : "#F9FAFB"
